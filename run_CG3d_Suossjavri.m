@@ -6,21 +6,18 @@ clear all
 modules_path = 'modules';
 addpath(genpath(modules_path));
 
-run_number = 'test_Samoylov'; 
+run_number = 'peat_suossjavri';
 result_path = './results/';
 config_path = fullfile(result_path, run_number);
 forcing_path = fullfile ('./forcing/');
 
 parameter_file = [run_number '.xlsx'];
 const_file = 'CONSTANTS_excel.xlsx';
-forcing_file = dir([forcing_path '*.mat']);  %BE CAREFUL, this is a significant problem - the forcing file name is NOT read from the Excel file as it should!!!
-%With this code, always the first mat-file in the forcig folder seems to be used, which leads
-%the program to crash if another file is specified in the Excel-file
-%MUST BE CHANGED! As a work-around, specify the correct number in the line below
-forcing_file = forcing_file(4,1).name;
+forcing_files_list = dir([forcing_path '*.mat']); 
+
 
 lateral = LATERAL_IA();
-lateral = assign_number_of_realizations(lateral, 2);
+lateral = assign_number_of_realizations(lateral, 4);
 lateral = get3d_PARA(lateral);
 
 if lateral.PARA.num_realizations > 1
@@ -31,8 +28,11 @@ end
 spmd
     
     lateral = get_index(lateral);
+    output_number = get_output_number(lateral, run_number);
+    
     run_number = get_run_number(lateral, run_number);    
     parameter_file = [run_number '.xlsx'];
+    
     
     % =====================================================================
     % Use modular interface to build model run
@@ -44,18 +44,35 @@ spmd
     
     pprovider = PARAMETER_PROVIDER_EXCEL(config_path, parameter_file);
     cprovider = CONSTANT_PROVIDER_EXCEL(config_path, const_file);
-    fprovider = FORCING_PROVIDER(forcing_path, forcing_file);
+
+    % CHANGE JOASC: 
+    % The forcing file name and inputs for the tile builder are now extracted
+    % from the configuration file using dedicated functions from the parameter
+    % provider (it implies that pprovider should be instantiated first).
+    % The name of the forcing file is compared to the list of files located in
+    % the folder forcing (this part can be removed if necessary).
+    
+    forcing_file = pprovider.get_forcing_file_name('FORCING');
+    
+    if any(contains({forcing_files_list.name}, forcing_file))
+        fprovider = FORCING_PROVIDER(forcing_path, forcing_file);
+    else
+        error('The name of the forcing file specified in the configuration file does not match any of the available files')
+    end
+    
+    %fprovider = FORCING_PROVIDER(forcing_path, forcing_file);
     
     
     % Build the actual model tile (forcing, grid, out and stratigraphy classes)
     tile = TILE_BUILDER(pprovider, cprovider, fprovider, ...
-        'forcing_id', 1, ...
-        'grid_id', 1, ...
-        'out_id', 1, ...
-        'strat_linear_id', 1, ...
-        'strat_layers_id', 1, ...
-        'strat_classes_id', 1);
-    
+        'forcing_id', pprovider.get_tile_information('TILE_IDENTIFICATION').forcing_id, ...
+        'grid_id', pprovider.get_tile_information('TILE_IDENTIFICATION').grid_id, ...
+        'out_id', pprovider.get_tile_information('TILE_IDENTIFICATION').out_id, ...
+        'strat_linear_id', pprovider.get_tile_information('TILE_IDENTIFICATION').strat_linear_id, ...
+        'strat_layers_id', pprovider.get_tile_information('TILE_IDENTIFICATION').strat_layers_id, ...
+        'strat_classes_id', pprovider.get_tile_information('TILE_IDENTIFICATION').strat_classes_id);
+
+
     forcing = tile.forcing;
     out = tile.out;
     
@@ -68,16 +85,23 @@ spmd
     day_sec = 24.*3600;
     t = forcing.PARA.start_time;
     %t is in days, timestep should also be in days
-
+    %if lateral.PARA.num_realizations > 1
     lateral = initialize_lateral_3D(lateral, TOP, BOTTOM, t);
-
+    %else
+        
+    %end
+    
+%     if lateral.STATVAR.index ==2
+%         TOP_CLASS.STATVAR.waterIce(end,1) = 0.2;
+%         TOP_CLASS.STATVAR.water(end,1) = 0.2;
+%     end
     
     lateral.IA_TIME = t;
-
+    %lateral = lateral_IA(lateral, forcing, t);
     
     
     
-    %lkjlkjlkj
+    
     
     while t < forcing.PARA.end_time
         
@@ -133,19 +157,10 @@ spmd
             keyboard
         end
         
-        if t> datenum(1996,5,9,18,0,0) && lateral.STATVAR.index == 1
-            disp('Hallo1')
-        end
-        
-        
         CURRENT = BOTTOM.PREVIOUS;
         while ~isequal(CURRENT, TOP)
             CURRENT = compute_diagnostic(CURRENT, forcing);
             CURRENT = CURRENT.PREVIOUS;
-        end
-        
-        if t> datenum(1996,5,9,18,0,0) && lateral.STATVAR.index == 1
-            disp('Hallo2')
         end
         
         %check for triggers that reorganize the stratigraphy
@@ -155,10 +170,6 @@ spmd
             CURRENT = CURRENT.NEXT;
         end
 
-        if t> datenum(1996,5,9,18,0,0) && lateral.STATVAR.index == 1
-            disp('Hallo3')
-        end
-        
         TOP_CLASS = TOP.NEXT; %TOP_CLASS and BOTTOM_CLASS for convenient access
         BOTTOM_CLASS = BOTTOM.PREVIOUS;
         
@@ -168,12 +179,8 @@ spmd
         
         lateral = lateral_IA(lateral, forcing, t);
         
-        if t> datenum(1996,5,9,18,0,0) && lateral.STATVAR.index == 1
-            disp('Hallo4')
-        end
-        
         %store the output according to the defined OUT clas
-        out = store_OUT(out, t, TOP_CLASS, BOTTOM, forcing, run_number, timestep, result_path);
+        out = store_OUT(out, t, TOP_CLASS, BOTTOM, forcing, output_number, timestep, result_path);
         
     end
     
