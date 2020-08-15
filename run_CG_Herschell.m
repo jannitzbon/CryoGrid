@@ -6,7 +6,7 @@ clear all
 modules_path = 'modules';
 addpath(genpath(modules_path));
 
-run_number = 'test_Samoylov';      
+run_number = 'Herschell';      
 result_path = './results/';
 config_path = fullfile(result_path, run_number);
 forcing_path = fullfile ('./forcing/');
@@ -17,7 +17,7 @@ forcing_file = dir([forcing_path '*.mat']);  %BE CAREFUL, this is a significant 
 %With this code, always the first mat-file in the forcig folder seems to be used, which leads
 %the program to crash if another file is specified in the Excel-file 
 %MUST BE CHANGED! As a work-around, specify the correct number in the line below 
-forcing_file = forcing_file(2,1).name;
+forcing_file = forcing_file(3,1).name;
 
 % =====================================================================
 % Use modular interface to build model run
@@ -54,6 +54,10 @@ day_sec = 24.*3600;
 t = forcing.PARA.start_time;
 %t is in days, timestep should also be in days
 
+lateral = LATERAL_IA();
+%lateral = initialize_lateral_1D(lateral, {'LAT_SEEPAGE_FACE_WATER'; 'LAT_REMOVE_SURFACE_WATER'}, TOP, BOTTOM, t);
+%lateral = initialize_lateral_1D(lateral, {'LAT_WATER_RESERVOIR'}, TOP, BOTTOM, t);
+lateral = initialize_lateral_1D(lateral, {'LAT_REMOVE_SURFACE_WATER'}, TOP, BOTTOM, t);
 
 while t < forcing.PARA.end_time
     
@@ -89,25 +93,19 @@ while t < forcing.PARA.end_time
     CURRENT = TOP.NEXT;
     timestep=3600;
     while ~isequal(CURRENT, BOTTOM)
+        
         timestep = min(timestep, get_timestep(CURRENT));
         CURRENT = CURRENT.NEXT;
     end
-    %timestep = max(timestep,0.01);
-    timestep = min(timestep, (out.OUTPUT_TIME-t).*day_sec);
-    %make sure to hit the output times!
+    next_break_time = min(lateral.IA_TIME, out.OUTPUT_TIME);
+    timestep = min(timestep, (next_break_time - t).*day_sec);
     
     %calculate prognostic variables
     CURRENT = TOP.NEXT;
     while ~isequal(CURRENT, BOTTOM)
         CURRENT = advance_prognostic(CURRENT, timestep);
         
-%     if CURRENT.STATVAR.waterIce + CURRENT.STATVAR.mineral + CURRENT.STATVAR.organic > CURRENT.STATVAR.layerThick .* CURRENT.STATVAR.area
-%         egdeg
-%     end
-    if sum(~isreal(CURRENT.STATVAR.T))>0
-        efgge
-    end
-    CURRENT = CURRENT.NEXT;
+        CURRENT = CURRENT.NEXT;
     end
     
     
@@ -130,6 +128,8 @@ while t < forcing.PARA.end_time
         CURRENT = check_trigger(CURRENT, forcing);
         CURRENT = CURRENT.NEXT;
     end
+    
+    lateral = lateral_IA(lateral, forcing, t);
     
     TOP_CLASS = TOP.NEXT; %TOP_CLASS and BOTOOM_CLASS for convenient access
     BOTTOM_CLASS = BOTTOM.PREVIOUS;
