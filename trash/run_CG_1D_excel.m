@@ -6,14 +6,16 @@ clear all
 modules_path = 'modules';
 addpath(genpath(modules_path));
 
-run_number = 'peat_suossjavri_YAML';      
+run_number = 'peat_suossjavri';      
+parameter_file = [run_number '.xlsx'];
+const_file = 'CONSTANTS_excel.xlsx';    
+
 
 result_path = './results/';
 config_path = fullfile(result_path, run_number);
 forcing_path = fullfile ('./forcing/');
 
-parameter_file = [run_number '.yml'];
-const_file = 'CONSTANTS_YAML.yml';              
+          
 
 % =====================================================================
 % Use modular interface to build model run
@@ -22,8 +24,8 @@ const_file = 'CONSTANTS_YAML.yml';
 % Depending on parameter_file_type, instantiates
 % PARAMETER_PROVIDER, CONSTANT_PROVIDER and FORCING_PROVIDER classes
 
-pprovider = PARAMETER_PROVIDER_YAML(config_path, parameter_file);
-cprovider = CONSTANT_PROVIDER_YAML(config_path, const_file);
+pprovider = PARAMETER_PROVIDER_EXCEL(config_path, parameter_file);
+cprovider = CONSTANT_PROVIDER_EXCEL(config_path, const_file);
 fprovider = FORCING_PROVIDER(pprovider, forcing_path);
 
 % Build the actual model tile (forcing, grid, out and stratigraphy classes)
@@ -38,13 +40,13 @@ out = tile.out;
 TOP_CLASS = tile.TOP_CLASS;
 BOTTOM_CLASS = tile.BOTTOM_CLASS;
 TOP = tile.TOP;
-BOTTOM = tile.BOTTOM;
+BOTTOM = tile.BOTTOM;    
+TOP.LATERAL = lateral;
 
 day_sec = 24.*3600;
 t = forcing.PARA.start_time;
 %t is in days, timestep should also be in days
 
-% ------ time integration ------------------
 
 while t < forcing.PARA.end_time
     
@@ -91,7 +93,6 @@ while t < forcing.PARA.end_time
     CURRENT = TOP.NEXT;
     while ~isequal(CURRENT, BOTTOM)
         CURRENT = advance_prognostic(CURRENT, timestep);
-        
         CURRENT = CURRENT.NEXT;
     end
     
@@ -99,9 +100,6 @@ while t < forcing.PARA.end_time
     %calculate diagnostic variables
     %some effects only happen in the first cell
     TOP.NEXT = compute_diagnostic_first_cell(TOP.NEXT, forcing);
-    if isnan(TOP.NEXT.STATVAR.Lstar)
-        keyboard
-    end
     
     CURRENT = BOTTOM.PREVIOUS;
     while ~isequal(CURRENT, TOP)
@@ -119,7 +117,7 @@ while t < forcing.PARA.end_time
     
     lateral = interact(lateral, forcing, t);
     
-    TOP_CLASS = TOP.NEXT; %TOP_CLASS and BOTOOM_CLASS for convenient access
+    TOP_CLASS = TOP.NEXT; %TOP_CLASS and BOTTOM_CLASS for convenient access
     BOTTOM_CLASS = BOTTOM.PREVIOUS;
     
        

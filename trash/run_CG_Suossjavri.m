@@ -90,7 +90,6 @@ while t < forcing.PARA.end_time
     CURRENT = TOP.NEXT;
     while ~isequal(CURRENT, BOTTOM)
         CURRENT = advance_prognostic(CURRENT, timestep);
-        
         CURRENT = CURRENT.NEXT;
     end
     
@@ -98,9 +97,6 @@ while t < forcing.PARA.end_time
     %calculate diagnostic variables
     %some effects only happen in the first cell
     TOP.NEXT = compute_diagnostic_first_cell(TOP.NEXT, forcing);
-    if isnan(TOP.NEXT.STATVAR.Lstar)
-        keyboard
-    end
     
     CURRENT = BOTTOM.PREVIOUS;
     while ~isequal(CURRENT, TOP)
